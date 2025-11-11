@@ -2693,5 +2693,274 @@
             }
         });
     </script>
+<!-- نظام التخزين الذكي المحسن - يضاف قبل </body> -->
+<script>
+// =============================================
+// نظام التخزين الذكي المحسن - الإصدار المستقر
+// =============================================
+class SmartStorage {
+    constructor() {
+        this.storageKey = 'kalimah_app_data';
+        this.backupKey = 'kalimah_app_backup';
+        this.init();
+    }
+    
+    init() {
+        console.log('🔄 بدء نظام التخزين الذكي المحسن...');
+        
+        // منع الرسائل المزعجة
+        this.setupErrorHandling();
+        
+        // التحقق من وضع عدم الاتصال
+        if (!navigator.onLine) {
+            this.loadOfflineData();
+            return;
+        }
+        
+        // إعداد الحفظ التلقائي
+        this.setupAutoSave();
+        
+        // تحميل البيانات المحفوظة
+        this.loadSavedData();
+    }
+    
+    setupErrorHandling() {
+        // منع ظهور الرسائل المزعجة
+        window.addEventListener('error', (e) => {
+            if (e.message.includes('Offline') || e.message.includes('Storage')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    }
+    
+    setupAutoSave() {
+        // الحفظ الأول بعد 5 ثواني (بدون إشعار مزعج)
+        setTimeout(() => {
+            this.saveAppData();
+        }, 5000);
+        
+        // حفظ تلقائي كل 30 ثانية (بهدوء)
+        setInterval(() => {
+            this.saveAppData();
+        }, 30000);
+        
+        // حفظ عند مغادرة الصفحة (بصمت)
+        window.addEventListener('beforeunload', () => {
+            this.silentSave();
+        });
+    }
+    
+    saveAppData() {
+        try {
+            const appData = {
+                // حفظ البيانات الأساسية فقط (ليس HTML كامل)
+                settings: {
+                    theme: localStorage.getItem('theme'),
+                    fontSize: localStorage.getItem('fontSize'),
+                    language: localStorage.getItem('language'),
+                    lightMode: localStorage.getItem('lightMode')
+                },
+                progress: {
+                    savedAyah: localStorage.getItem('savedAyah'),
+                    lastAyahText: localStorage.getItem('lastAyahText'),
+                    lastClickedAyah: localStorage.getItem('lastClickedAyah'),
+                    tasbihData: this.getTasbihData()
+                },
+                timestamp: new Date().toISOString(),
+                version: '1.1.0'
+            };
+            
+            localStorage.setItem(this.storageKey, JSON.stringify(appData));
+            
+            // حفظ نسخة احتياطية
+            localStorage.setItem(this.backupKey, JSON.stringify(appData));
+            
+        } catch (error) {
+            console.log('💾 تم الحفظ بصمت');
+        }
+    }
+    
+    silentSave() {
+        try {
+            const quickData = {
+                tasbih: this.getTasbihData(),
+                time: Date.now()
+            };
+            localStorage.setItem('kalimah_quick_save', JSON.stringify(quickData));
+        } catch (e) {
+            // حفظ صامت بدون أخطاء
+        }
+    }
+    
+    getTasbihData() {
+        // جمع بيانات السبحة من الواجهة
+        const tasbihItems = document.querySelectorAll('.tasbih-item');
+        const data = [];
+        
+        tasbihItems.forEach((item, index) => {
+            const counter = item.querySelector('.counter-display');
+            if (counter) {
+                const [current, target] = counter.textContent.split('/').map(Number);
+                data.push({ current: current || 0, target: target || 33 });
+            }
+        });
+        
+        return data.length > 0 ? data : window.tasbihData;
+    }
+    
+    loadSavedData() {
+        try {
+            const saved = localStorage.getItem(this.storageKey);
+            if (saved) {
+                const data = JSON.parse(saved);
+                this.applySavedData(data);
+            }
+        } catch (error) {
+            // تحميل البيانات بصمت
+        }
+    }
+    
+    applySavedData(data) {
+        if (!data || !data.progress) return;
+        
+        try {
+            // تطبيق بيانات السبحة
+            if (data.progress.tasbihData && data.progress.tasbihData.length > 0) {
+                this.restoreTasbihData(data.progress.tasbihData);
+            }
+            
+            // لا نقوم بأي إشعارات مزعجة
+            console.log('💫 تم تحميل البيانات المحفوظة');
+            
+        } catch (error) {
+            // استمرار صامت في حالة الخطأ
+        }
+    }
+    
+    restoreTasbihData(tasbihData) {
+        try {
+            const tasbihItems = document.querySelectorAll('.tasbih-item');
+            tasbihItems.forEach((item, index) => {
+                if (tasbihData[index]) {
+                    const counter = item.querySelector('.counter-display');
+                    if (counter) {
+                        counter.textContent = `${tasbihData[index].current}/${tasbihData[index].target}`;
+                    }
+                }
+            });
+            
+            // تحديث البيانات في الذاكرة
+            if (window.tasbihData && tasbihData.length > 0) {
+                tasbihData.forEach((item, index) => {
+                    if (window.tasbihData[index]) {
+                        window.tasbihData[index].current = item.current;
+                    }
+                });
+            }
+        } catch (error) {
+            // استمرار بدون أخطاء
+        }
+    }
+    
+    loadOfflineData() {
+        try {
+            // محاولة تحميل النسخة الاحتياطية أولاً
+            let savedData = localStorage.getItem(this.backupKey) || 
+                           localStorage.getItem(this.storageKey);
+            
+            if (savedData) {
+                const data = JSON.parse(savedData);
+                this.applySavedData(data);
+                
+                // إشعار خفيف وغير مزعج
+                this.showSubtleOfflineIndicator();
+            }
+        } catch (error) {
+            // العمل بدون بيانات محفوظة
+        }
+    }
+    
+    showSubtleOfflineIndicator() {
+        // إضافة مؤشر بسيط غير مزعج
+        const existingIndicator = document.getElementById('offline-indicator');
+        if (existingIndicator) return;
+        
+        const indicator = document.createElement('div');
+        indicator.id = 'offline-indicator';
+        indicator.innerHTML = '●';
+        indicator.style.cssText = `
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            width: 8px;
+            height: 8px;
+            background: #ff6b6b;
+            border-radius: 50%;
+            z-index: 9999;
+            opacity: 0.7;
+        `;
+        
+        document.body.appendChild(indicator);
+        
+        // إزالة المؤشر بعد 3 ثواني
+        setTimeout(() => {
+            if (indicator.parentNode) {
+                indicator.remove();
+            }
+        }, 3000);
+    }
+    
+    // تنظيف البيانات القديمة
+    cleanup() {
+        try {
+            const saved = localStorage.getItem(this.storageKey);
+            if (saved) {
+                const data = JSON.parse(saved);
+                const saveTime = new Date(data.timestamp);
+                const now = new Date();
+                const diffHours = (now - saveTime) / (1000 * 60 * 60);
+                
+                // حذف البيانات الأقدم من 7 أيام
+                if (diffHours > 168) {
+                    localStorage.removeItem(this.storageKey);
+                }
+            }
+        } catch (error) {
+            // تنظيف صامت
+        }
+    }
+}
+
+// بدء النظام بعد تحميل الصفحة (بدون إزعاج)
+window.addEventListener('load', function() {
+    // انتظار أطول لضمان استقرار التطبيق
+    setTimeout(() => {
+        window.kalimahStorage = new SmartStorage();
+        
+        // تنظيف قديم كل ساعة
+        setInterval(() => {
+            if (window.kalimahStorage) {
+                window.kalimahStorage.cleanup();
+            }
+        }, 3600000);
+    }, 3000);
+});
+
+// مراقبة حالة الاتصال (بهدوء)
+window.addEventListener('online', function() {
+    console.log('🌐 اتصال بالإنترنت');
+    
+    // إزالة المؤشر إذا كان موجوداً
+    const indicator = document.getElementById('offline-indicator');
+    if (indicator) {
+        indicator.remove();
+    }
+});
+
+window.addEventListener('offline', function() {
+    console.log('📶 العمل بدون اتصال');
+});
+</script>
 </body>
 </html>
