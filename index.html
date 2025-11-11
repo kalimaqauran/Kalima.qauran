@@ -2693,5 +2693,143 @@
             }
         });
     </script>
+<!-- نظام التخزين الذكي - يضاف قبل </body> -->
+<script>
+// =============================================
+// نظام التخزين الذكي للتطبيق - النسخة الكاملة
+// =============================================
+class TasbihStorage {
+    constructor() {
+        this.storageKey = 'tasbih_app_full_data';
+        this.init();
+    }
+    
+    init() {
+        console.log('🔄 بدء نظام التخزين الذكي...');
+        
+        // التحقق من وضع عدم الاتصال
+        if (!navigator.onLine) {
+            console.log('📱 وضع عدم الاتصال - جاري الاسترجاع');
+            this.loadOfflineVersion();
+            return;
+        }
+        
+        // إذا متصل - إعداد الحفظ التلقائي
+        this.setupAutoSave();
+        this.showStatus('✅ التطبيق جاهز للعمل بدون إنترنت');
+    }
+    
+    setupAutoSave() {
+        // الحفظ الأول بعد 3 ثواني
+        setTimeout(() => {
+            this.saveCurrentState();
+        }, 3000);
+        
+        // حفظ تلقائي كل 20 ثانية
+        setInterval(() => {
+            this.saveCurrentState();
+        }, 20000);
+        
+        // حفظ عند مغادرة الصفحة
+        window.addEventListener('beforeunload', () => {
+            this.saveCurrentState();
+        });
+    }
+    
+    saveCurrentState() {
+        try {
+            const appData = {
+                html: document.documentElement.outerHTML,
+                timestamp: new Date().toISOString(),
+                title: document.title,
+                tasbihData: window.tasbihData || []
+            };
+            
+            localStorage.setItem(this.storageKey, JSON.stringify(appData));
+            console.log('💾 تم حفظ التطبيق:', new Date().toLocaleTimeString());
+            
+        } catch (error) {
+            console.log('❌ خطأ في الحفظ:', error);
+        }
+    }
+    
+    loadOfflineVersion() {
+        try {
+            const saved = localStorage.getItem(this.storageKey);
+            if (saved) {
+                const data = JSON.parse(saved);
+                console.log('📂 جاري تحميل النسخة المحفوظة');
+                
+                // استبدال المحتوى الحالي بالمحتوى المحفوظ
+                document.open();
+                document.write(data.html);
+                document.close();
+                
+                this.showStatus('🔋 تعمل من النسخة المحفوظة - ' + 
+                    new Date(data.timestamp).toLocaleDateString());
+            } else {
+                this.showStatus('❌ لا يوجد نسخة محفوظة');
+            }
+        } catch (error) {
+            console.log('❌ خطأ في الاسترجاع:', error);
+            this.showStatus('⚠️ خطأ في تحميل النسخة المحفوظة');
+        }
+    }
+    
+    showStatus(message) {
+        const existingMsg = document.getElementById('storage-status');
+        if (existingMsg) existingMsg.remove();
+        
+        const statusMsg = document.createElement('div');
+        statusMsg.id = 'storage-status';
+        statusMsg.textContent = message;
+        statusMsg.style.cssText = `
+            position: fixed;
+            top: 15px;
+            right: 15px;
+            background: #4CAF50;
+            color: white;
+            padding: 12px 18px;
+            border-radius: 8px;
+            z-index: 10000;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 300px;
+            text-align: center;
+        `;
+        
+        document.body.appendChild(statusMsg);
+        
+        setTimeout(() => {
+            if (statusMsg.parentNode) {
+                statusMsg.remove();
+            }
+        }, 4000);
+    }
+}
+
+// بدء النظام بعد تحميل الصفحة
+window.addEventListener('load', function() {
+    setTimeout(() => {
+        window.tasbihStorage = new TasbihStorage();
+    }, 2000);
+});
+
+// مراقبة حالة الاتصال
+window.addEventListener('online', function() {
+    console.log('🌐 الاتصال عاد');
+    if (window.tasbihStorage) {
+        window.tasbihStorage.showStatus('✅ الاتصال عاد - التطبيق محدث');
+    }
+});
+
+window.addEventListener('offline', function() {
+    console.log('🚫 الاتصال انقطع');
+    if (window.tasbihStorage) {
+        window.tasbihStorage.showStatus('🔋 العمل من الذاكرة المحلية');
+    }
+});
+</script>
 </body>
 </html>
