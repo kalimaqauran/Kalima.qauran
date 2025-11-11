@@ -1,180 +1,126 @@
-// advanced-storage.js - ضع هذا الكود كاملاً في الملف
-
+// advanced-storage.js - نظام يحفظ الموقع كامل
 class AdvancedStorage {
     constructor() {
-        this.dbName = 'SmartAppDB';
-        this.version = 1;
-        this.init();
+        console.log('🚀 بدء نظام الحفظ الشامل...');
+        this.registerServiceWorker();
+        this.setupOfflineDetection();
     }
 
-    async init() {
-        console.log('🚀 بدء نظام التخزين المتقدم...');
-        await this.initDatabase();
-        await this.autoSaveCurrentState();
-        this.setupSmartSync();
-        this.setupAutoSave();
-    }
-
-    // إنشاء قاعدة البيانات
-    async initDatabase() {
-        return new Promise((resolve, reject) => {
-            const request = indexedDB.open(this.dbName, this.version);
-            
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
-                
-                if (!db.objectStoreNames.contains('pages')) {
-                    const pagesStore = db.createObjectStore('pages', { keyPath: 'url' });
-                    pagesStore.createIndex('timestamp', 'timestamp', { unique: false });
-                }
-                
-                if (!db.objectStoreNames.contains('user_data')) {
-                    db.createObjectStore('user_data', { keyPath: 'key' });
-                }
-                
-                console.log('🗃️ تم إنشاء قاعدة البيانات');
-            };
-
-            request.onsuccess = (event) => {
-                this.db = event.target.result;
-                console.log('✅ قاعدة البيانات جاهزة');
-                resolve();
-            };
-
-            request.onerror = (event) => {
-                console.error('❌ خطأ في قاعدة البيانات:', event.target.error);
-                reject(event.target.error);
-            };
-        });
-    }
-
-    // حفظ حالة الصفحة الحالية
-    async autoSaveCurrentState() {
-        try {
-            const pageData = {
-                url: window.location.href,
-                html: document.documentElement.outerHTML,
-                timestamp: Date.now(),
-                title: document.title
-            };
-
-            await this.saveToDB('pages', pageData);
-            console.log('💾 تم حفظ الصفحة الحالية');
-            
-            // حفظ بيانات النماذج
-            await this.saveFormsData();
-            
-        } catch (error) {
-            console.log('⚠️ لا يمكن الحفظ الآن:', error);
+    // تسجيل Service Worker
+    registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(registration => {
+                    console.log('✅ Service Worker مسجل بنجاح');
+                    this.checkOfflineSupport();
+                })
+                .catch(error => {
+                    console.log('❌ فشل تسجيل Service Worker:', error);
+                    this.setupLocalStorageFallback();
+                });
+        } else {
+            console.log('❌ المتصفح لا يدعم Service Worker');
+            this.setupLocalStorageFallback();
         }
     }
 
-    // حفظ بيانات النماذج
-    async saveFormsData() {
-        const formsData = {};
-        const inputs = document.querySelectorAll('input, textarea, select');
+    // التحقق من دعم العمل بدون إنترنت
+    async checkOfflineSupport() {
+        const cache = await caches.open('quran-app-cache');
+        const cached = await cache.match('/');
         
-        inputs.forEach((input, index) => {
-            if (input.name || input.id) {
-                const key = input.name || input.id || `input_${index}`;
-                formsData[key] = input.value;
-            }
-        });
-
-        await this.saveToDB('user_data', {
-            key: 'forms_data',
-            data: formsData,
-            timestamp: Date.now()
-        });
+        if (!cached) {
+            console.log('💾 جاري حفظ الموقع في الذاكرة...');
+            await this.cacheEntireSite();
+        }
     }
 
-    // دالة الحفظ العامة
-    async saveToDB(storeName, data) {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName], 'readwrite');
-            const store = transaction.objectStore(storeName);
-            const request = store.put(data);
+    // حفظ الموقع كامل في الذاكرة
+    async cacheEntireSite() {
+        try {
+            const cache = await caches.open('quran-app-cache');
+            const filesToCache = [
+                '/',
+                '/index.html',
+                '/load-storage.js',
+                '/advanced-storage.js'
+            ];
 
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject(request.error);
-        });
+            await cache.addAll(filesToCache);
+            console.log('✅ تم حفظ الموقع كامل في الذاكرة');
+            this.showMessage('✅ التطبيق جاهز للعمل بدون إنترنت');
+        } catch (error) {
+            console.log('❌ خطأ في حفظ الموقع:', error);
+        }
     }
 
-    // استرجاع البيانات
-    async loadFromDB(storeName, key) {
-        return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction([storeName]);
-            const store = transaction.objectStore(storeName);
-            const request = store.get(key);
-
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject(request.error);
-        });
-    }
-
-    // إعداد الحفظ التلقائي
-    setupAutoSave() {
-        // حفظ كل 30 ثانية
+    // نظام بديل إذا لم يعمل Service Worker
+    setupLocalStorageFallback() {
+        console.log('🔧 تفعيل النظام الاحتياطي...');
+        
+        // حفظ HTML كامل كل 30 ثانية
         setInterval(() => {
-            this.autoSaveCurrentState();
+            try {
+                localStorage.setItem('app_full_backup', document.documentElement.outerHTML);
+                localStorage.setItem('backup_time', new Date().toISOString());
+            } catch (e) {
+                console.log('⚠️ لا يمكن الحفظ في الذاكرة');
+            }
         }, 30000);
 
-        // حفظ عند مغادرة الصفحة
-        window.addEventListener('beforeunload', () => {
-            this.autoSaveCurrentState();
-        });
-    }
-
-    // المزامنة الذكية
-    setupSmartSync() {
-        // عند عودة الاتصال
-        window.addEventListener('online', () => {
-            console.log('🌐 اتصال عاد - جاري المزامنة...');
-            this.showMessage('✅ اتصال عاد - تم المزامنة');
-        });
-
-        // عند فقدان الاتصال
+        // استرجاع عند عدم الاتصال
         window.addEventListener('offline', () => {
-            console.log('🚫 اتصال انقطع - العمل من الذاكرة');
-            this.showMessage('🔋 العمل من الذاكرة المحلية');
-            this.loadLastSavedState();
+            this.loadFromBackup();
         });
     }
 
-    // استرجاع آخر حالة محفوظة
-    async loadLastSavedState() {
-        try {
-            const savedData = await this.loadFromDB('pages', window.location.href);
-            if (savedData && savedData.html) {
-                console.log('📂 جاري تحميل النسخة المحفوظة');
-                // هنا يمكنك تحميل البيانات المحفوظة
-            }
-        } catch (error) {
-            console.log('❌ لا يمكن تحميل البيانات المحفوظة');
+    // تحميل من النسخة الاحتياطية
+    loadFromBackup() {
+        const backup = localStorage.getItem('app_full_backup');
+        if (backup) {
+            console.log('🔋 تحميل من النسخة الاحتياطية');
+            this.showMessage('🔋 العمل من الذاكرة المحلية');
+        }
+    }
+
+    // اكتشاف حالة الاتصال
+    setupOfflineDetection() {
+        window.addEventListener('online', () => {
+            this.showMessage('🌐 اتصال عاد', 'green');
+        });
+
+        window.addEventListener('offline', () => {
+            this.showMessage('🚫 اتصال انقطع - العمل من الذاكرة', 'orange');
+        });
+
+        // التحقق الأولي
+        if (!navigator.onLine) {
+            this.showMessage('🔋 وضع عدم الاتصال', 'orange');
         }
     }
 
     // عرض رسائل للمستخدم
-    showMessage(text) {
+    showMessage(text, color = 'green') {
         // إزالة أي رسالة سابقة
-        const oldMsg = document.getElementById('storage-message');
+        const oldMsg = document.getElementById('offline-message');
         if (oldMsg) oldMsg.remove();
 
         // إنشاء رسالة جديدة
         const msg = document.createElement('div');
-        msg.id = 'storage-message';
+        msg.id = 'offline-message';
         msg.textContent = text;
         msg.style.cssText = `
             position: fixed;
             top: 10px;
             right: 10px;
-            background: #4CAF50;
+            background: ${color};
             color: white;
             padding: 10px 15px;
             border-radius: 5px;
             z-index: 10000;
             font-family: Arial;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            font-size: 14px;
         `;
         
         document.body.appendChild(msg);
@@ -188,11 +134,7 @@ class AdvancedStorage {
     }
 }
 
-// بدء التشغيل التلقائي عند تحميل الصفحة
+// بدء النظام فوراً
 document.addEventListener('DOMContentLoaded', function() {
-    // الانتظار قليلاً لتحميل الصفحة بالكامل
-    setTimeout(() => {
-        window.appStorage = new AdvancedStorage();
-        console.log('🎯 نظام التخزين المتقدم يعمل!');
-    }, 1000);
+    window.appStorage = new AdvancedStorage();
 });
